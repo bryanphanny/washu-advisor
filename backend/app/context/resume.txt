@@ -1,0 +1,58 @@
+Bryan Phan — Resume Context (for AI Advisor)
+
+EDUCATION
+Washington University in St. Louis | Aug 2024 – May 2028
+B.S. Computer Science | Finance Minor | GPA: 3.96/4.0
+Courses: Intro CS, OOP, Data Science, Computer Engineering, Calc I-III, Matrix Algebra, Discrete Math
+Honors: Dean's List
+
+EXPERIENCE
+
+ML Research Intern | May 2026 – Present
+Sun Lab | Digital Transformation Research Corps, WashU
+- Adapting Delphi (1,000-disease EHR transformer, Nature publication) to predict continuous Alzheimer's
+  progression in a 40-50K patient cohort (~200K records) from the NACC dataset using Python on Azure GPU compute.
+- Developing a disease-time synchronization pipeline in Python to compute per-patient biological offsets
+  from an ADAS-Cog exponential decay model, aligning EHR sequences to reduce model noise.
+- Designing a comorbidity perturbation framework that injects ICD-coded conditions into patient sequences
+  and measures trajectory deviation vs. baseline to identify progression-accelerating comorbidities.
+
+Backend Engineer | Jan 2026 – Present
+Google Developer Group | ShowMediaService, St. Louis MO
+- Architected an automated CRM pipeline with n8n, HubSpot API, and Supabase for lead classification
+  and automated chat summarization.
+- Optimized a RAG pipeline by embedding company documentation into a vector database to improve
+  ChatGPT API response accuracy and reduce hallucinations.
+- Engineered a centralized inventory system using Supabase and TypeScript with CSV bulk-upload
+  and CRUD operations to automate equipment tracking.
+
+Matched Academic Mentor | Aug 2025 – Present
+Learning Center, WashU
+- Mentored students in CSE1301 (Intro CS) in Java fundamentals: Recursion, OOP, Data Structures.
+
+PROJECTS
+
+WashU CS Academic Advisor | May 2026
+Python, FastAPI, PostgreSQL, Next.js, Claude API, Docker, Supabase
+- Full-stack academic planning app with FastAPI backend, PostgreSQL relational schema (6 tables, 60+ seeded courses),
+  Next.js frontend deployed on Vercel and Railway.
+- Agentic Claude API chatbot with native tool_use, exposing 4 custom tools for real-time degree auditing
+  and career advising with injected internship timeline context.
+- Live degree audit dashboard tracking CS curriculum and Finance Minor requirements, seeded from
+  official WashU course catalog data.
+
+Pokemon TCG In-Stock Monitor | May 2026
+Python, APScheduler, SQLite, httpx, Discord Webhooks
+- Reverse-engineered Target's internal Redsky API using its purchasability filter as a real-time
+  availability signal, eliminating need for a headless browser.
+- Dual APScheduler loops (45-sec stock check, 5-min discovery) with per-request jitter and proxy
+  fallback for sub-minute restock-to-Discord alert latency.
+- SQLite state-diff alerting (OUT→IN_STOCK transitions only); deployed 24/7 on Linux VPS via
+  systemd with auto-restart.
+
+TECHNICAL SKILLS
+Languages: Python, Java, C++, C, TypeScript, JavaScript, SQL
+Frameworks & Libraries: FastAPI, Next.js, SQLAlchemy, Pydantic, APScheduler, Scikit-learn, Pandas, Matplotlib
+Tools & Infrastructure: Docker, n8n, Vercel, Railway, Supabase, Azure
+Databases: PostgreSQL, SQLite
+APIs & Services: Claude API, HubSpot API
