@@ -12,6 +12,11 @@ class PlannedCourse(BaseModel):
     credits: float
 
 
+class GradeUpdate(BaseModel):
+    grade: str | None = None
+    grade_points: float | None = None
+
+
 @router.get("/semesters")
 def get_semesters():
     db = get_db()
@@ -52,6 +57,16 @@ def remove_planned_course(course_id: int):
         raise HTTPException(status_code=404, detail="Planned course not found")
     db.table("user_courses").delete().eq("id", course_id).execute()
     return {"deleted": course_id}
+
+
+@router.patch("/{course_id}/grade")
+def set_course_grade(course_id: int, body: GradeUpdate):
+    db = get_db()
+    result = db.table("user_courses").update({
+        "grade": body.grade,
+        "grade_points": body.grade_points,
+    }).eq("id", course_id).execute()
+    return result.data[0]
 
 
 @router.patch("/{course_id}/move")

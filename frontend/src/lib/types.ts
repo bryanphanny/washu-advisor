@@ -37,14 +37,23 @@ export interface Requirement {
   elective_group?: string
 }
 
+export interface ChatMessage {
+  role: 'user' | 'assistant'
+  content: string
+}
+
 export interface AuditCategory {
   category: string
   program: string
   credits_required: number
   notes?: string
   satisfied_required: Requirement[]
+  planned_required: Requirement[]
   unsatisfied_required: Requirement[]
   satisfied_electives: Requirement[]
+  planned_electives: Requirement[]
   elective_credits_still_needed: number
   is_complete: boolean
+  total_completed_credits?: number
+  total_planned_credits?: number
 }

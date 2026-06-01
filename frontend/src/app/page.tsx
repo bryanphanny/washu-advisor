@@ -6,6 +6,7 @@ import NavBar from '@/components/NavBar'
 import RequirementsSidebar from '@/components/RequirementsSidebar'
 import SemesterGrid from '@/components/SemesterGrid'
 import CourseCatalog from '@/components/CourseCatalog'
+import Chat from '@/components/Chat'
 import { api } from '@/lib/api'
 import type { AuditCategory, UserCourse, Course, Semester } from '@/lib/types'
 
@@ -17,6 +18,21 @@ export default function Page() {
   const [activeCourse, setActiveCourse] = useState<Course | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [chatOpen, setChatOpen] = useState(false)
+
+  const computeGPA = useCallback((courses: UserCourse[], includePlanned: boolean) => {
+    const gradable = courses.filter(c =>
+      (includePlanned ? true : !c.is_planned) && c.grade_points != null
+    )
+    if (gradable.length === 0) return null
+    const totalPoints = gradable.reduce((s, c) => s + (c.grade_points! * c.credits), 0)
+    const totalCredits = gradable.reduce((s, c) => s + c.credits, 0)
+    return totalCredits > 0 ? totalPoints / totalCredits : null
+  }, [])
+
+  const computeTotalCredits = useCallback((courses: UserCourse[]) => {
+    return courses.filter(c => c.grade !== 'W').reduce((s, c) => s + c.credits, 0)
+  }, [])
 
   const loadAll = useCallback(async () => {
     try {
@@ -88,10 +104,15 @@ export default function Page() {
     await refreshAudit()
   }
 
+  const handleSetGrade = async (id: number, grade: string | null, gradePoints: number | null) => {
+    const updated = await api.planner.setGrade(id, grade, gradePoints)
+    setUserCourses(prev => prev.map(c => c.id === updated.id ? updated : c))
+  }
+
   if (loading) {
     return (
       <div className="flex flex-col h-full">
-        <NavBar />
+        <NavBar onOpenChat={() => setChatOpen(true)} />
         <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">
           Loading your degree plan...
         </div>
@@ -102,7 +123,7 @@ export default function Page() {
   if (error) {
     return (
       <div className="flex flex-col h-full">
-        <NavBar />
+        <NavBar onOpenChat={() => setChatOpen(true)} />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center max-w-md">
             <div className="text-red-500 font-semibold mb-2">Connection Error</div>
@@ -127,13 +148,17 @@ export default function Page() {
   return (
     <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       <div className="flex flex-col h-full">
-        <NavBar />
+        <NavBar onOpenChat={() => setChatOpen(true)} />
         <div className="flex flex-1 overflow-hidden">
-          <RequirementsSidebar audit={audit} />
+          <RequirementsSidebar audit={audit} currentGPA={computeGPA(userCourses, false) ?? 0} />
           <SemesterGrid
             semesters={semesters}
             userCourses={userCourses}
             onRemovePlanned={handleRemovePlanned}
+            onSetGrade={handleSetGrade}
+            currentGPA={computeGPA(userCourses, false) ?? 0}
+            projectedGPA={computeGPA(userCourses, true)}
+            totalCredits={computeTotalCredits(userCourses)}
           />
           <CourseCatalog catalog={catalog} plannedCodes={plannedCodes} />
         </div>
@@ -150,6 +175,8 @@ export default function Page() {
           </div>
         )}
       </DragOverlay>
+
+      <Chat isOpen={chatOpen} onClose={() => setChatOpen(false)} />
     </DndContext>
   )
 }

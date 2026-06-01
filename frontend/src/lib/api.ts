@@ -14,6 +14,13 @@ const json = (body: unknown) => ({
 })
 
 export const api = {
+  chat: {
+    send: (message: string, history: object[]) =>
+      request<{ reply: string; history: object[] }>('/api/chat', {
+        method: 'POST',
+        ...json({ message, history }),
+      }),
+  },
   courses: {
     list: (department?: string) =>
       request<Course[]>(`/api/courses${department ? `?department=${department}` : ''}`),
@@ -34,5 +41,7 @@ export const api = {
       request<void>(`/api/planner/${id}`, { method: 'DELETE' }),
     move: (id: number, semester_id: number) =>
       request<UserCourse>(`/api/planner/${id}/move?semester_id=${semester_id}`, { method: 'PATCH' }),
+    setGrade: (id: number, grade: string | null, gradePoints: number | null) =>
+      request<UserCourse>(`/api/planner/${id}/grade`, { method: 'PATCH', ...json({ grade, grade_points: gradePoints }) }),
   },
 }
