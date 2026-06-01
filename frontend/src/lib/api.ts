@@ -16,7 +16,7 @@ const json = (body: unknown) => ({
 export const api = {
   chat: {
     send: (message: string, history: object[]) =>
-      request<{ reply: string; history: object[] }>('/api/chat', {
+      request<{ reply: string; history: object[] }>('/api/chat/', {
         method: 'POST',
         ...json({ message, history }),
       }),

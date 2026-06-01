@@ -1,8 +1,9 @@
 import os
+import time
 from pathlib import Path
 
 from google import genai
-from google.genai import types
+from google.genai import types, errors as genai_errors
 from fastapi import APIRouter
 from pydantic import BaseModel
 
@@ -85,6 +86,21 @@ def _run_tool(name: str, args: dict) -> dict:
     return {"error": f"Unknown tool: {name}"}
 
 
+def _generate_with_retry(client: genai.Client, contents, config, max_attempts: int = 4):
+    for attempt in range(max_attempts):
+        try:
+            return client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=contents,
+                config=config,
+            )
+        except genai_errors.ServerError as e:
+            if attempt < max_attempts - 1 and "503" in str(e):
+                time.sleep(2 ** attempt)  # 1s, 2s, 4s
+                continue
+            raise
+
+
 class ChatMessage(BaseModel):
     message: str
     history: list[dict] = []
@@ -108,11 +124,7 @@ def chat(body: ChatMessage):
     contents = list(body.history) + [{"role": "user", "parts": [{"text": body.message}]}]
 
     for _ in range(8):
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=contents,
-            config=config,
-        )
+        response = _generate_with_retry(client, contents, config)
 
         parts = response.candidates[0].content.parts
         function_calls = [p.function_call for p in parts if p.function_call is not None]
