@@ -1,5 +1,6 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from app.database import get_db
+from app.api.deps import get_current_user
 
 router = APIRouter()
 
@@ -14,14 +15,19 @@ def get_requirements(program: str | None = None):
 
 
 @router.get("/audit")
-def get_degree_audit():
+def get_degree_audit(current_user_id: str = Depends(get_current_user)):
+    return _compute_audit(current_user_id)
+
+
+def _compute_audit(user_id: str) -> list:
+    """Internal audit computation — also called directly from chat tools."""
     db = get_db()
     categories = db.table("requirement_categories").select(
         "*, requirements(*)"
     ).execute().data
 
-    completed = db.table("user_courses").select("*").eq("is_planned", False).execute().data
-    planned = db.table("user_courses").select("*").eq("is_planned", True).execute().data
+    completed = db.table("user_courses").select("*").eq("user_id", user_id).eq("is_planned", False).execute().data
+    planned   = db.table("user_courses").select("*").eq("user_id", user_id).eq("is_planned", True).execute().data
 
     completed_codes = {
         c["course_code"] for c in completed
@@ -57,18 +63,17 @@ def get_degree_audit():
             })
             continue
 
-        reqs = cat.get("requirements", [])
-        required = [r for r in reqs if r["is_required"]]
+        reqs     = cat.get("requirements", [])
+        required  = [r for r in reqs if r["is_required"]]
         electives = [r for r in reqs if not r["is_required"]]
 
-        satisfied_required = [r for r in required if r["course_code"] in completed_codes]
-        planned_required = [r for r in required if r["course_code"] in planned_codes and r["course_code"] not in completed_codes]
-        unsatisfied_required = [r for r in required if r["course_code"] not in completed_codes and r["course_code"] not in planned_codes]
+        satisfied_required   = [r for r in required  if r["course_code"] in completed_codes]
+        planned_required     = [r for r in required  if r["course_code"] in planned_codes and r["course_code"] not in completed_codes]
+        unsatisfied_required = [r for r in required  if r["course_code"] not in completed_codes and r["course_code"] not in planned_codes]
+        satisfied_elective   = [r for r in electives if r["course_code"] in completed_codes]
+        planned_elective     = [r for r in electives if r["course_code"] in planned_codes and r["course_code"] not in completed_codes]
 
-        satisfied_elective = [r for r in electives if r["course_code"] in completed_codes]
-        planned_elective = [r for r in electives if r["course_code"] in planned_codes and r["course_code"] not in completed_codes]
-
-        credits_from_required = sum(r["credits"] for r in satisfied_required) + sum(r["credits"] for r in planned_required)
+        credits_from_required  = sum(r["credits"] for r in satisfied_required)  + sum(r["credits"] for r in planned_required)
         credits_from_electives = sum(r["credits"] for r in satisfied_elective) + sum(r["credits"] for r in planned_elective)
         elective_needed = (cat["credits_required"] or 0) - credits_from_required - credits_from_electives
 

@@ -1,16 +1,20 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { DndContext, DragEndEvent, DragOverlay, DragStartEvent } from '@dnd-kit/core'
+import { useRouter } from 'next/navigation'
+import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, MeasuringStrategy, pointerWithin } from '@dnd-kit/core'
 import NavBar from '@/components/NavBar'
 import RequirementsSidebar from '@/components/RequirementsSidebar'
 import SemesterGrid from '@/components/SemesterGrid'
 import CourseCatalog from '@/components/CourseCatalog'
 import Chat from '@/components/Chat'
 import { api } from '@/lib/api'
+import { useAuth } from '@/components/AuthProvider'
 import type { AuditCategory, UserCourse, Course, Semester } from '@/lib/types'
 
 export default function Page() {
+  const { session } = useAuth()
+  const router = useRouter()
   const [audit, setAudit] = useState<AuditCategory[]>([])
   const [userCourses, setUserCourses] = useState<UserCourse[]>([])
   const [catalog, setCatalog] = useState<Course[]>([])
@@ -18,7 +22,6 @@ export default function Page() {
   const [activeCourse, setActiveCourse] = useState<Course | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [chatOpen, setChatOpen] = useState(false)
 
   const computeGPA = useCallback((courses: UserCourse[], includePlanned: boolean) => {
     const gradable = courses.filter(c =>
@@ -53,7 +56,10 @@ export default function Page() {
     }
   }, [])
 
-  useEffect(() => { loadAll() }, [loadAll])
+  useEffect(() => {
+    if (!session) { router.push('/login'); return }
+    loadAll()
+  }, [session, router, loadAll])
 
   const refreshAudit = async () => {
     const auditData = await api.requirements.audit()
@@ -109,10 +115,24 @@ export default function Page() {
     setUserCourses(prev => prev.map(c => c.id === updated.id ? updated : c))
   }
 
+  const handleAddAP = async (course: { course_code: string; course_name: string; credits: number }) => {
+    const added = await api.planner.addAP(course)
+    setUserCourses(prev => [...prev, added])
+    await refreshAudit()
+  }
+
+  const handleRemoveAP = async (id: number) => {
+    await api.planner.removeAP(id)
+    setUserCourses(prev => prev.filter(c => c.id !== id))
+    await refreshAudit()
+  }
+
+  if (!session) return null
+
   if (loading) {
     return (
       <div className="flex flex-col h-full">
-        <NavBar onOpenChat={() => setChatOpen(true)} />
+        <NavBar onTranscriptImported={loadAll} />
         <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">
           Loading your degree plan...
         </div>
@@ -123,7 +143,7 @@ export default function Page() {
   if (error) {
     return (
       <div className="flex flex-col h-full">
-        <NavBar onOpenChat={() => setChatOpen(true)} />
+        <NavBar onTranscriptImported={loadAll} />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center max-w-md">
             <div className="text-red-500 font-semibold mb-2">Connection Error</div>
@@ -146,9 +166,14 @@ export default function Page() {
   )
 
   return (
-    <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+    <DndContext
+      collisionDetection={pointerWithin}
+      measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+    >
       <div className="flex flex-col h-full">
-        <NavBar onOpenChat={() => setChatOpen(true)} />
+        <NavBar onTranscriptImported={loadAll} />
         <div className="flex flex-1 overflow-hidden">
           <RequirementsSidebar audit={audit} currentGPA={computeGPA(userCourses, false) ?? 0} />
           <SemesterGrid
@@ -156,6 +181,8 @@ export default function Page() {
             userCourses={userCourses}
             onRemovePlanned={handleRemovePlanned}
             onSetGrade={handleSetGrade}
+            onAddAP={handleAddAP}
+            onRemoveAP={handleRemoveAP}
             currentGPA={computeGPA(userCourses, false) ?? 0}
             projectedGPA={computeGPA(userCourses, true)}
             totalCredits={computeTotalCredits(userCourses)}
@@ -176,7 +203,7 @@ export default function Page() {
         )}
       </DragOverlay>
 
-      <Chat isOpen={chatOpen} onClose={() => setChatOpen(false)} />
+      <Chat />
     </DndContext>
   )
 }

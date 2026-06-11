@@ -1,36 +1,33 @@
 import os
 import time
-from pathlib import Path
 
 from google import genai
 from google.genai import types, errors as genai_errors
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from app.api.deps import get_current_user
 from app.api.routes.courses import get_course
-from app.api.routes.planner import get_planned_courses
-from app.api.routes.requirements import get_degree_audit
+from app.api.routes.requirements import _compute_audit
+from app.database import get_db
 from app.knowledge.retrieval import retrieve_context
 
 router = APIRouter()
 
-_resume = (Path(__file__).parent.parent.parent / "context" / "resume.txt").read_text()
+_BASE_SYSTEM = """You are an AI academic advisor for Washington University in St. Louis students.
 
-_BASE_SYSTEM = f"""You are a personal academic and career advisor for Bryan Phan at Washington University in St. Louis.
+You help students with:
+- Understanding and planning their degree requirements
+- Choosing courses and electives
+- Academic policies (add/drop, withdrawals, grading)
+- General career and internship preparation advice for CS and business students
+- Graduation planning and timeline
 
-STUDENT PROFILE:
-- Rising Junior, B.S. Computer Science + Finance Minor
-- GPA: 3.96/4.0, ~80 credits completed
-- Career Goal: Backend/Cloud Engineering at major tech companies (Google, Meta, Amazon, Apple, Microsoft)
-- Target: Junior Summer Internship (Summer 2027)
+You have real-time tools to check the student's live degree progress, planned courses, and course catalog details.
+Always use these tools when answering questions about the student's specific requirements or course plan.
 
-RESUME:
-{_resume}
-
-You have real-time tools to check Bryan's degree progress, planned courses, and course details.
-Use them when answering questions about requirements or course planning.
-Give specific, actionable advice tailored to Bryan's backend/cloud internship goal by Summer 2027.
-When relevant research context is provided below, use it to give concrete, data-backed answers — cite specific timelines, numbers, and tactics from it."""
+Be helpful, specific, and actionable. When relevant context is provided below, use it to give concrete answers.
+Do not reference any specific student by name or make assumptions about a student's background beyond what their degree audit shows."""
 
 _TOOLS = [types.Tool(function_declarations=[
     types.FunctionDeclaration(
@@ -47,13 +44,13 @@ _TOOLS = [types.Tool(function_declarations=[
     ),
     types.FunctionDeclaration(
         name="get_course_info",
-        description="Details about a specific course by its code (e.g. 'CSE247', 'CSE332L').",
+        description="Details about a specific course by its code.",
         parameters=types.Schema(
             type=types.Type.OBJECT,
             properties={
                 "course_code": types.Schema(
                     type=types.Type.STRING,
-                    description="The course code, e.g. 'CSE247'",
+                    description="The course code, e.g. 'CSE 4107'",
                 )
             },
             required=["course_code"],
@@ -62,12 +59,12 @@ _TOOLS = [types.Tool(function_declarations=[
 ])]
 
 
-def _run_tool(name: str, args: dict) -> dict:
+def _run_tool(name: str, args: dict, user_id: str) -> dict:
     try:
         if name == "get_degree_audit":
-            return {"result": get_degree_audit()}
+            return {"result": _compute_audit(user_id)}
         if name == "get_remaining_requirements":
-            audit = get_degree_audit()
+            audit = _compute_audit(user_id)
             return {"result": [
                 {
                     "category": c["category"],
@@ -78,7 +75,10 @@ def _run_tool(name: str, args: dict) -> dict:
                 for c in audit if not c["is_complete"]
             ]}
         if name == "get_planned_courses":
-            return {"result": get_planned_courses()}
+            db = get_db()
+            return {"result": db.table("user_courses").select(
+                "*, semesters(term, year)"
+            ).eq("user_id", user_id).eq("is_planned", True).execute().data}
         if name == "get_course_info":
             return {"result": get_course(args.get("course_code", ""))}
     except Exception as e:
@@ -96,7 +96,7 @@ def _generate_with_retry(client: genai.Client, contents, config, max_attempts: i
             )
         except genai_errors.ServerError as e:
             if attempt < max_attempts - 1 and "503" in str(e):
-                time.sleep(2 ** attempt)  # 1s, 2s, 4s
+                time.sleep(2 ** attempt)
                 continue
             raise
 
@@ -107,7 +107,12 @@ class ChatMessage(BaseModel):
 
 
 @router.post("/")
-def chat(body: ChatMessage):
+def chat(body: ChatMessage, current_user_id: str = Depends(get_current_user)):
+    db = get_db()
+    perm = db.table("user_permissions").select("can_use_ai").eq("user_id", current_user_id).execute()
+    if not perm.data or not perm.data[0]["can_use_ai"]:
+        raise HTTPException(status_code=403, detail="AI advisor access not enabled for your account")
+
     client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
     rag_context = retrieve_context(body.message, client)
@@ -134,7 +139,6 @@ def chat(body: ChatMessage):
             contents.append({"role": "model", "parts": [{"text": reply}]})
             return {"reply": reply, "history": contents}
 
-        # Append model's tool-call turn to history
         model_parts = []
         for p in parts:
             if p.function_call is not None:
@@ -145,12 +149,11 @@ def chat(body: ChatMessage):
                 model_parts.append({"text": p.text})
         contents.append({"role": "model", "parts": model_parts})
 
-        # Execute tools and append results
         fn_parts = [
             {
                 "function_response": {
                     "name": fc.name,
-                    "response": _run_tool(fc.name, dict(fc.args or {})),
+                    "response": _run_tool(fc.name, dict(fc.args or {}), current_user_id),
                 }
             }
             for fc in function_calls

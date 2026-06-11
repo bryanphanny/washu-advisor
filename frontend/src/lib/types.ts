@@ -37,6 +37,14 @@ export interface Requirement {
   elective_group?: string
 }
 
+export interface UserPermission {
+  user_id: string
+  email: string
+  role: string
+  can_use_ai: boolean
+  created_at: string
+}
+
 export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
